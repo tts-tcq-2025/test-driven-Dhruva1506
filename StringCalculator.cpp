@@ -1,59 +1,139 @@
 #include "StringCalculator.h"
+#include <stdexcept>
 #include <vector>
 #include <string>
 #include <regex>
-#include <stdexcept>
+#include <sstream>
 #include <algorithm>
+#include <numeric>
 
-int StringCalculator::add(const std::string &numbers) {
-  if (numbers.empty()) return 0;
-
-  std::string nums = numbers;
-  std::string delimiter = ",|\n";
-
-  // Handle custom delimiter
-  if (nums.rfind("//", 0) == 0) {
-    std::smatch match;
-    std::regex re("//(\\[.*\\]|.)\\n(.*)");
-    if (std::regex_match(nums, match, re)) {
-      std::string delimDef = match[1].str();
-      nums = match[2].str();
-      if (delimDef.front() == '[' && delimDef.back() == ']')
-        delimDef = delimDef.substr(1, delimDef.size() - 2);
-
-      // Escape regex special characters
-      delimiter = std::regex_replace(delimDef,
-                                     std::regex(R"([.^$|()\\+*?{}[\]])"),
-                                     R"(\\$&)");
+int StringCalculator::Add(const std::string& numbers) {
+    if (numbers.empty()) {
+        return 0;
     }
-  }
 
-  std::regex re_delim(delimiter);
-  std::sregex_token_iterator it(nums.begin(), nums.end(), re_delim, -1);
-  std::sregex_token_iterator end;
+    std::string delimiter = parseDelimiter(numbers);
+    std::string numbersPart = extractNumbers(numbers);
+    std::string normalizedNumbers = normalizeDelimiters(numbersPart, delimiter);
+    std::vector<int> nums = parseNumbers(normalizedNumbers);
 
-  int result = 0;
-  std::vector<int> negatives;
+    validateNumbers(nums);
 
-  // Iterate tokens using lambda
-  std::for_each(it, end, [&](const std::string &token) {
-    if (token.empty()) return;
-    int num = std::stoi(token);
-    if (num < 0) {
-      negatives.push_back(num);
-    } else if (num <= 1000) {
-      result += num;
+    return calculateSum(nums);
+}
+
+std::string StringCalculator::parseDelimiter(const std::string& numbers) {
+    if (!hasCustomDelimiterFormat(numbers)) {
+        return ",";
     }
-  });
 
-  if (!negatives.empty()) {
-    std::string msg = "negatives not allowed: ";
+    size_t newlinePos = numbers.find('\n');
+    if (newlinePos == std::string::npos) {
+        return ",";
+    }
+
+    return extractDelimiterFromHeader(numbers.substr(2, newlinePos - 2));
+}
+
+bool StringCalculator::hasCustomDelimiterFormat(const std::string& numbers) {
+    return numbers.length() >= 4 && numbers.substr(0, 2) == "//";
+}
+
+std::string StringCalculator::extractDelimiterFromHeader(const std::string& delimiterPart) {
+    if (hasBracketFormat(delimiterPart)) {
+        return delimiterPart.substr(1, delimiterPart.length() - 2);
+    }
+
+    return delimiterPart;
+}
+
+bool StringCalculator::hasBracketFormat(const std::string& delimiterPart) {
+    return delimiterPart.length() >= 2 &&
+           delimiterPart[0] == '[' &&
+           delimiterPart[delimiterPart.length() - 1] == ']';
+}
+
+std::string StringCalculator::extractNumbers(const std::string& numbers) {
+    if (!hasCustomDelimiterFormat(numbers)) {
+        return numbers;
+    }
+
+    return extractNumbersAfterDelimiterHeader(numbers);
+}
+
+std::string StringCalculator::extractNumbersAfterDelimiterHeader(const std::string& numbers) {
+    size_t newlinePos = numbers.find('\n');
+    if (newlinePos == std::string::npos || newlinePos + 1 >= numbers.length()) {
+        return numbers;
+    }
+
+    return numbers.substr(newlinePos + 1);
+}
+
+std::string StringCalculator::normalizeDelimiters(const std::string& numbersPart,
+                                                   const std::string& delimiter) {
+    std::string result = numbersPart;
+
+    if (delimiter != ",") {
+        result = replaceDelimiterWithComma(result, delimiter);
+    }
+
+    std::replace(result.begin(), result.end(), '\n', ',');
+
+    return result;
+}
+
+std::string StringCalculator::replaceDelimiterWithComma(const std::string& text,
+                                                        const std::string& delimiter) {
+    std::string escapedDelimiter = delimiter;
+    std::regex specialChars(R"([-[\]{}()*+?.,\^$|#\s])");
+    escapedDelimiter = std::regex_replace(escapedDelimiter, specialChars, R"(\$&)");
+
+    std::regex delimiterRegex(escapedDelimiter);
+    return std::regex_replace(text, delimiterRegex, ",");
+}
+
+std::vector<int> StringCalculator::parseNumbers(const std::string& normalizedNumbers) {
+    std::vector<int> nums;
+    std::stringstream ss(normalizedNumbers);
+    std::string num;
+
+    while (std::getline(ss, num, ',')) {
+        if (!num.empty()) {
+            nums.push_back(std::stoi(num));
+        }
+    }
+
+    return nums;
+}
+
+int StringCalculator::calculateSum(const std::vector<int>& nums) {
+    return std::accumulate(nums.begin(), nums.end(), 0, [](int sum, int n) {
+        return n <= 1000 ? sum + n : sum;
+    });
+}
+
+void StringCalculator::validateNumbers(const std::vector<int>& nums) {
+    std::vector<int> negatives = findNegativeNumbers(nums);
+
+    if (!negatives.empty()) {
+        std::string message = buildNegativeNumbersMessage(negatives);
+        throw std::invalid_argument(message);
+    }
+}
+
+std::vector<int> StringCalculator::findNegativeNumbers(const std::vector<int>& nums) {
+    std::vector<int> negatives;
+    std::copy_if(nums.begin(), nums.end(), std::back_inserter(negatives),
+                 [](int num) { return num < 0; });
+    return negatives;
+}
+
+std::string StringCalculator::buildNegativeNumbersMessage(const std::vector<int>& negatives) {
+    std::string message = "negatives not allowed: ";
     for (size_t i = 0; i < negatives.size(); ++i) {
-      msg += std::to_string(negatives[i]);
-      if (i != negatives.size() - 1) msg += " ";
+        if (i > 0) message += ", ";
+        message += std::to_string(negatives[i]);
     }
-    throw std::runtime_error(msg);
-  }
-
-  return result;
+    return message;
 }
