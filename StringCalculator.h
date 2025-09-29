@@ -1,15 +1,11 @@
-#ifndef STRING_CALCULATOR_H
-#define STRING_CALCULATOR_H
+#ifndef STRINGCALCULATOR_H_
+#define STRINGCALCULATOR_H_
 
 #include <string>
-#include <vector>
 
 class StringCalculator {
-public:
-    int add(const std::string &numbers);
-
-private:
-    std::vector<std::string> split(const std::string &s, const std::string &delimiter);
+ public:
+  int add(const std::string &numbers);
 };
 
-#endif
+#endif  // STRINGCALCULATOR_H_
